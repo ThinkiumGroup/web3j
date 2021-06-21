@@ -18,8 +18,8 @@ import java.util.Map;
  * @description
  */
 public class BaseTest {
-    protected static final Credentials HarryPotter = Credentials.create("4ef61bb72fbe09c548adc47f1a0660b35d56113fb338cede18bcbb647d40eb67");
-    protected static final Web3j web3j = Web3j.load(new HttpService("http://43.247.184.50:8020/v2"));
+    protected static final Credentials HarryPotter = Credentials.create("0x237b045137881832b997dd7d08ab52962331559278f2c598583b2d8bb6cb1b81");
+    protected static final Web3j web3j = Web3j.load(new HttpService("http://127.1:8019/v2"));
     
     protected static String PRIVATE_KEY = "0x8e5b44b6cee8fa05092b4b5a8843aa6b0ec37915a940c9b5938e88a7e6fdd83a";
     protected static String ADDRESS = "0xf167a1c5c5fab6bddca66118216817af3fa86827";

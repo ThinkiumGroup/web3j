@@ -28,7 +28,7 @@ public class TransferTest extends BaseTest {
     
     @Test
     public void testTransfer() throws InterruptedException, TransactionException, IOException {
-        final TransactionReceipt tx = transfer.send(ADDRESS, BigDecimal.ONE, Convert.Unit.MTKM);
+        final TransactionReceipt tx = transfer.send(ADDRESS, BigDecimal.ONE, Convert.Unit.TKM);
         log.debug("testTransfer() tx:{}", formatOut(tx));
     }
 }
