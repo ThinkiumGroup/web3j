@@ -1,24 +1,22 @@
 package org.thinkium.blockchain.web3j.abi;
 
-import org.thinkium.blockchain.web3j.abi.datatypes.*;
-import org.thinkium.blockchain.web3j.abi.datatypes.generated.Bytes32;
-import org.thinkium.blockchain.web3j.utils.Numeric;
-import org.thinkium.blockchain.web3j.utils.Strings;
+import org.thinkium.blockchain.web3j.abi.datatypes.Type;
+import org.thinkium.blockchain.web3j.abi.spi.FunctionReturnDecoderProvider;
 
-import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Iterator;
 import java.util.List;
-
-import static org.thinkium.blockchain.web3j.abi.TypeDecoder.MAX_BYTE_LENGTH_FOR_HEX_STRING;
+import java.util.ServiceLoader;
 
 /**
  * Decodes values returned by function or event calls.
  */
-public class FunctionReturnDecoder {
-    
-    private FunctionReturnDecoder() {
-    }
-    
+public abstract class FunctionReturnDecoder {
+
+    private static FunctionReturnDecoder DEFAULT_DECODER;
+
+    private static final ServiceLoader<FunctionReturnDecoderProvider> loader = ServiceLoader.load(FunctionReturnDecoderProvider.class);
+
     /**
      * Decode ABI encoded return values from smart contract function call.
      *
@@ -28,34 +26,26 @@ public class FunctionReturnDecoder {
      * @return {@link List} of values returned by function, {@link Collections#emptyList()} if
      * invalid response
      */
-    public static List<Type> decode(
-            String rawInput, List<TypeReference<Type>> outputParameters) {
-        String input = Numeric.cleanHexPrefix(rawInput);
-        
-        if (Strings.isEmpty(input)) {
-            return Collections.emptyList();
-        } else {
-            return build(input, outputParameters);
-        }
+    public static List<Type> decode(String rawInput, List<TypeReference<Type>> outputParameters) {
+        return decoder().decodeFunctionResult(rawInput, outputParameters);
     }
-    
+
     /**
-     * <p>Decodes an indexed parameter associated with an event. Indexed parameters are individually
+     * Decodes an indexed parameter associated with an event. Indexed parameters are individually
      * encoded, unlike non-indexed parameters which are encoded as per ABI-encoded function
-     * parameters and return values.</p>
+     * parameters and return values.
      *
      * <p>If any of the following types are indexed, the Keccak-256 hashes of the values are
-     * returned instead. These are returned as a bytes32 value.</p>
+     * returned instead. These are returned as a bytes32 value.
      *
      * <ul>
-     *     <li>Arrays</li>
-     *     <li>Strings</li>
-     *     <li>Bytes</li>
+     *   <li>Arrays
+     *   <li>Strings
+     *   <li>Bytes
      * </ul>
      *
-     * <p>See the
-     * <a href="http://solidity.readthedocs.io/en/latest/contracts.html#events">
-     * Solidity documentation</a> for further information.</p>
+     * <p>See the <a href="http://solidity.readthedocs.io/en/latest/contracts.html#events">Solidity
+     * documentation</a> for further information.
      *
      * @param rawInput      ABI encoded input
      * @param typeReference of expected result type
@@ -63,79 +53,23 @@ public class FunctionReturnDecoder {
      *
      * @return the decode value
      */
-    @SuppressWarnings("unchecked")
-    public static <T extends Type> Type decodeIndexedValue(
-            String rawInput, TypeReference<T> typeReference) {
-        String input = Numeric.cleanHexPrefix(rawInput);
-        
-        try {
-            Class<T> type = typeReference.getClassType();
-            
-            if (Bytes.class.isAssignableFrom(type)) {
-                return TypeDecoder.decodeBytes(input, (Class<Bytes>) Class.forName(type.getName()));
-            } else if (Array.class.isAssignableFrom(type)
-                    || BytesType.class.isAssignableFrom(type)
-                    || Utf8String.class.isAssignableFrom(type)) {
-                return TypeDecoder.decodeBytes(input, Bytes32.class);
-            } else {
-                return TypeDecoder.decode(input, type);
-            }
-        } catch (ClassNotFoundException e) {
-            throw new UnsupportedOperationException("Invalid class reference provided", e);
-        }
+    public static <T extends Type> Type decodeIndexedValue(String rawInput, TypeReference<T> typeReference) {
+        return decoder().decodeEventParameter(rawInput, typeReference);
     }
-    
-    private static List<Type> build(
-            String input, List<TypeReference<Type>> outputParameters) {
-        List<Type> results = new ArrayList<>(outputParameters.size());
-        
-        int offset = 0;
-        for (TypeReference<?> typeReference : outputParameters) {
-            try {
-                @SuppressWarnings("unchecked")
-                Class<Type> type = (Class<Type>) typeReference.getClassType();
-                
-                int hexStringDataOffset = getDataOffset(input, offset, type);
-                
-                Type result;
-                if (DynamicArray.class.isAssignableFrom(type)) {
-                    result = TypeDecoder.decodeDynamicArray(
-                            input, hexStringDataOffset, typeReference);
-                    offset += MAX_BYTE_LENGTH_FOR_HEX_STRING;
-                    
-                } else if (typeReference instanceof TypeReference.StaticArrayTypeReference) {
-                    int length = ((TypeReference.StaticArrayTypeReference) typeReference).getSize();
-                    result = TypeDecoder.decodeStaticArray(
-                            input, hexStringDataOffset, typeReference, length);
-                    offset += length * MAX_BYTE_LENGTH_FOR_HEX_STRING;
-                    
-                } else if (StaticArray.class.isAssignableFrom(type)) {
-                    int length = Integer.parseInt(type.getSimpleName()
-                            .substring(StaticArray.class.getSimpleName().length()));
-                    result = TypeDecoder.decodeStaticArray(
-                            input, hexStringDataOffset, typeReference, length);
-                    offset += length * MAX_BYTE_LENGTH_FOR_HEX_STRING;
-                    
-                } else {
-                    result = TypeDecoder.decode(input, hexStringDataOffset, type);
-                    offset += MAX_BYTE_LENGTH_FOR_HEX_STRING;
-                }
-                results.add(result);
-                
-            } catch (ClassNotFoundException e) {
-                throw new UnsupportedOperationException("Invalid class reference provided", e);
-            }
-        }
-        return results;
+
+    protected abstract List<Type> decodeFunctionResult(String rawInput, List<TypeReference<Type>> outputParameters);
+
+    protected abstract <T extends Type> Type decodeEventParameter(String rawInput, TypeReference<T> typeReference);
+
+    private static FunctionReturnDecoder decoder() {
+        final Iterator<FunctionReturnDecoderProvider> iterator = loader.iterator();
+        return iterator.hasNext() ? iterator.next().get() : defaultDecoder();
     }
-    
-    private static <T extends Type> int getDataOffset(String input, int offset, Class<T> type) {
-        if (DynamicBytes.class.isAssignableFrom(type)
-                || Utf8String.class.isAssignableFrom(type)
-                || DynamicArray.class.isAssignableFrom(type)) {
-            return TypeDecoder.decodeUintAsInt(input, offset) << 1;
-        } else {
-            return offset;
+
+    private static FunctionReturnDecoder defaultDecoder() {
+        if (DEFAULT_DECODER == null) {
+            DEFAULT_DECODER = new DefaultFunctionReturnDecoder();
         }
+        return DEFAULT_DECODER;
     }
 }
